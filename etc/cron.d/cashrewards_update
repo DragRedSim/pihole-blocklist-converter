@@ -1,0 +1,2 @@
+# Update the Cashrewards blocklist
+0 5 * * * pihole /home/pi/adlist_converter.py
