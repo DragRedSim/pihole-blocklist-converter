@@ -4,6 +4,8 @@ import os
 import argparse 
 import urllib3
 import requests
+import sqlite3 as lite
+import subprocess
 
 ### --- DEBUG --- ###
 # import logging
@@ -33,7 +35,9 @@ def arg_parse():
 	URL = parser.add_argument(
 		'url',
 		type=str,
-		help='input url')
+		help='input url',
+		nargs='?',
+		default="https://cdn.cashrewards.com/whitelist/network-cash-back-shopping.txt")
 	local_args = parser.parse_args()
 	return local_args
 
@@ -116,7 +120,8 @@ def writeList(inURL, adList, newFile):
 				if line.startswith("@@||") == True:
 					line = cleanAdstr(line[4:])
 					if line:
-						writer.write(line+"\n")
+						callWhitelist(line)
+						writer.write("@@"+line+"\n")
 			except: 
 				pass
 
@@ -128,6 +133,30 @@ def writeList(inURL, adList, newFile):
 			except: 
 				pass
 
+def chk_conn(conn):
+	try:
+		conn.cursor()
+		return True
+	except Exception as ex:
+		return False
+
+def callWhitelist(domain):
+
+	cur = con.cursor()
+	#search if already in list
+	cur.execute('SELECT seq FROM sqlite_sequence WHERE name = "domainlist"')
+	idout = cur.fetchone()
+	idnum = idout[0] + 1
+	cur.execute('SELECT * FROM domainlist WHERE domain = ?', (domain, ))
+	check=cur.fetchone()
+	if check is None:
+		#not in list, add it
+		cur.execute('INSERT INTO domainlist (id, type, domain, enabled, comment) VALUES(?,0,?,1,"Cashrewards")', (idnum, domain))
+		cur.execute('UPDATE sqlite_sequence SET seq = ? WHERE name = "domainlist"', (idnum, ))
+
+	cur.execute('INSERT OR IGNORE INTO domainlist_by_group VALUES(?,5)', (idnum, ))
+	con.commit()
+
 def main(inURL):
 	''' Main.
 	'''
@@ -135,8 +164,20 @@ def main(inURL):
 	fileName = getFilename(inURL)
 	currDir = os.getcwd()
 	newFile = currDir + "/filters/" + fileName
+	try:
+		print(f"Connection status: {chk_conn(con)}")
+	except Error as e:
+		print(e)
+
 	writeList(inURL, adList, newFile)
 
+	con.close()
+	print("Disconnected from gravity DB")
+	process = subprocess.Popen(["pihole", "-g"], stdout=subprocess.PIPE)
+	output, error = process.communicate()
+
 args = arg_parse()
+con = lite.connect('/etc/pihole/gravity.db') #used for automatically whitelisting
+
 if args.url:
 	main(args.url)
